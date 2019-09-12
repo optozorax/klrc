@@ -1,0 +1,9 @@
+[package]
+name = "keyboard-layout-statistics-counter"
+version = "0.1.0"
+authors = ["optozorax <optozorax@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+regex = "1.2.1"
+encoding = "0.2.33"
