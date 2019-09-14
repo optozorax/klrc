@@ -13,12 +13,77 @@ use std::io::prelude::*;
 use encoding::all::WINDOWS_1251;
 use encoding::{Encoding, DecoderTrap};
 
+use std::mem;
+
+// Thanks to red75prime https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=e2f92e287e61cfab6e3bc6426a229aab
+
+#[derive(Debug)]
+enum Pos {
+    First,
+    Middle,
+    Last,
+    Only,
+}
+
+enum Prev<T> {
+    First(T),
+    Rest(T),
+    None,
+}
+
+struct WithPosition<I: Iterator> {
+    prev: Prev<I::Item>,
+    iter: I,
+}
+
+impl<I: Iterator> Iterator for WithPosition<I> {
+    type Item = (Pos, I::Item);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match mem::replace(&mut self.prev, Prev::None) {
+            Prev::First(x) => {
+                if let Some(next) = self.iter.next() {
+                    self.prev = Prev::Rest(next);
+                    Some((Pos::First, x))
+                } else {
+                    Some((Pos::Only, x))
+                }
+            }
+            Prev::Rest(x) => {
+                if let Some(next) = self.iter.next() {
+                    self.prev = Prev::Rest(next);
+                    Some((Pos::Middle, x))
+                } else {
+                    Some((Pos::Last, x))
+                }
+            }
+            Prev::None => None,
+        }
+    }
+}
+
+fn with_position<I: Iterator>(mut iter: I) -> WithPosition<I> {
+    if let Some(first) = iter.next() {
+        WithPosition {
+            prev: Prev::First(first),
+            iter,
+        }
+    } else {
+        WithPosition {
+            prev: Prev::None,
+            iter,
+        }
+    }
+}
+
 type Keyboard = [Vec<Vec<char>>; 2];
 
 trait KeyboardParser {
     fn get_pos(&self, c: &char) -> Result<LetterPos, ()>;
     fn parse(&self, s: &String) -> Vec<Vec<String>>;
+    fn format_parsed_word(&self, s: &String) -> String;
     fn print_parsed_word(&self, s: &String);
+    fn println_parsed_word(&self, s: &String);
 }
 
 
@@ -227,6 +292,75 @@ fn sort_rolls_hashmap(hashmap: &HashMap<String, usize>) -> Vec<(String, usize)> 
     sorted
 }
 
+fn is_supa_pupa_roll_word(word: &Vec<Vec<String>>) -> bool {
+    let mut result = true;
+
+    for (pos, hand) in with_position(word.iter()) {
+        use Pos::*;
+
+        if hand.len() != 1 {
+            return false;
+        }
+
+        match pos {
+            First => {},
+            Last => {},
+            Middle => {
+                if hand[0].chars().count() == 1 {
+                    return false;
+                }
+            },
+            Only => {
+                return false;
+            },
+        }
+    }
+
+    if word.len() == 2 && 
+       word[0].len() == 1 && 
+       word[1].len() == 2 {
+        result = false;
+    }
+
+    if word.len() == 2 && 
+       (word[0].len() == 1 || 
+        word[1].len() == 1) {
+        result = false;
+    }
+
+    result
+}
+
+fn is_alternation_word(word: &Vec<Vec<String>>) -> bool {
+    if word.len() < 3 {
+        return false;
+    }
+
+    for hand in word {
+        if hand.len() != 1 {
+            return false;
+        }
+        for roll in hand {
+            if roll.chars().count() != 1 {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+fn is_with_triple_fourthle_roll(word: &Vec<Vec<String>>) -> bool {
+    for hand in word {
+        for roll in hand {
+            if roll.chars().count() > 2 {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 fn count_rolls(keyboard: &Keyboard, stats: &Vec<WordStatistic>) -> (Vec<(String, usize)>, Vec<(String, usize)>) {
     let mut good_rolls = HashMap::new();
     let mut bad_rolls = HashMap::new();
@@ -251,7 +385,81 @@ fn count_rolls(keyboard: &Keyboard, stats: &Vec<WordStatistic>) -> (Vec<(String,
     (sort_rolls_hashmap(&good_rolls), sort_rolls_hashmap(&bad_rolls))
 }
 
-fn print_rolls(rolls_sorted: &Vec<(String, usize)>, name: &String, is_print_rolls: bool) -> usize {
+fn write_supa_pupa_words(keyboard: &Keyboard, stats: &Vec<WordStatistic>, out_file: &String) {
+    let roll2_count = 100;
+    let roll3_count = 50;
+    let alternation_count = 100;
+    // let parsed_count = 50_000;
+
+    let mut roll2_mas = vec![];
+    let mut roll3_mas = vec![];
+    let mut alternation_mas = vec![];
+
+    let write_file = File::create(out_file).unwrap();
+    let mut writer = BufWriter::new(&write_file);
+
+    // Собираем слова для словарей
+    for stat in stats {
+        let hand_mas = keyboard.parse(&stat.word);
+        if is_alternation_word(&hand_mas) {
+            if alternation_mas.len() < alternation_count {
+                alternation_mas.push(stat.word.clone());
+            }
+        } else if is_supa_pupa_roll_word(&hand_mas) {
+            if !is_with_triple_fourthle_roll(&hand_mas) {
+                if roll2_mas.len() < roll2_count {
+                    roll2_mas.push(stat.word.clone());
+                }
+            } else {
+                if roll3_mas.len() < roll3_count {
+                    roll3_mas.push(stat.word.clone());
+                }
+            }
+        }
+    }
+
+    // Выводим первые 100 слов с перекатами только из двух букв
+    writeln!(&mut writer, "First {} words with maximum alternation:", alternation_count).unwrap();
+    writeln!(&mut writer, "{}", alternation_mas.join(" ")).unwrap();
+    writeln!(&mut writer, "").unwrap();
+
+    // Выводим первые 100 слов с перекатами только из двух букв
+    writeln!(&mut writer, "First {} words with roll of size 2:", roll2_count).unwrap();
+    writeln!(&mut writer, "{}", roll2_mas.join(" ")).unwrap();
+    writeln!(&mut writer, "").unwrap();
+
+    // Выводим первые 50 слов с перекатами из трёх или даже четырх букв
+    writeln!(&mut writer, "First {} words with roll of size more than 3:", roll3_count).unwrap();
+    writeln!(&mut writer, "{}", roll3_mas.join(" ")).unwrap();
+    writeln!(&mut writer, "").unwrap();
+
+    // Выводим парсинг всех использованных слов
+    writeln!(&mut writer, "Parsing of all this words:").unwrap();
+    let words_to_print = vec![
+        ("Alternation words:", alternation_mas),
+        ("Roll2 words:", roll2_mas),
+        ("Roll3 words:", roll3_mas),
+    ];
+    for (text, word_mas) in words_to_print {
+        writeln!(&mut writer, "{}", text).unwrap();
+        for word in word_mas {
+            writeln!(&mut writer, "{}\t{}", word, keyboard.format_parsed_word(&word)).unwrap();
+        }
+        writeln!(&mut writer, "").unwrap();
+    }
+
+    // Выводим парсинг всех слов в принципе и их частотность
+    // writeln!(&mut writer, "First {} words parsed:", parsed_count).unwrap();
+    // writeln!(&mut writer, "Word\tParsed\tFrequency").unwrap();
+    // for (index, stat) in stats.iter().enumerate() {
+    //     if index > parsed_count {
+    //         break;
+    //     }
+    //     writeln!(&mut writer, "{}\t{}\t{}", stat.word, keyboard.format_parsed_word(&stat.word), stat.count).unwrap();
+    // }
+}
+
+fn print_rolls(rolls_sorted: &Vec<(String, usize)>, name: &String, is_print_rolls: bool) -> (usize, f64) {
     if is_print_rolls {
         for (index, (roll, count)) in rolls_sorted.iter().enumerate() {
             println!("{}\t{}", roll, count);
@@ -272,9 +480,10 @@ fn print_rolls(rolls_sorted: &Vec<(String, usize)>, name: &String, is_print_roll
         }
     }
 
-    println!("{} rolls count in layout: {}%", name, (roll_sum as f64)/(all_sum as f64) * 100.0);
+    let rolls = (roll_sum as f64)/(all_sum as f64);
+    println!("{} rolls count in layout: {}%", name, rolls * 100.0);
 
-    all_sum
+    (all_sum, rolls)
 }
 
 impl KeyboardParser for Keyboard {
@@ -329,31 +538,33 @@ impl KeyboardParser for Keyboard {
         result
     }
 
-    fn print_parsed_word(&self, s: &String) {
+    fn format_parsed_word(&self, s: &String) -> String {
+        let mut result = String::new();
         let parsed = self.parse(s);
         for hand in parsed {
-            print!("[");
-            let mut first = true;
-            for roll in hand {
-                if first {
-                    first = false;
-                    print!("{}", roll);
-                } else {
-                    print!("-{}", roll);
-                }
-            }
-            print!("]");
+            result += "[";
+            result += &hand.join("·");
+            result += "]";
         }
+        result.to_string()
+    }
+
+    fn print_parsed_word(&self, s: &String) {
+        print!("{}", self.format_parsed_word(s));
+    }
+    fn println_parsed_word(&self, s: &String) {
+        self.print_parsed_word(s);
         println!("");
     }
 }
 
+
 fn main() {
     read_books("./books/russian/".to_string(), "./out/russian_words.txt".to_string(), true);
-    lsread_books("./books/english/".to_string(), "./out/english_words.txt".to_string(), false);
+    read_books("./books/english/".to_string(), "./out/english_words.txt".to_string(), false);
 
     let russian_keyboards: Vec<(String, Keyboard)> = vec![
-        ("обычный йцукен".to_string(), [
+        ("йцукен".to_string(), [
             vec![
                 vec!['й', 'ф', 'я', 'ё'], 
                 vec!['ц', 'ы', 'ч'], 
@@ -367,7 +578,7 @@ fn main() {
                 vec!['г', 'о', 'ь', 'н', 'р', 'т'], 
             ]
         ]),
-        ("йцукен optozorax'а".to_string(), [ 
+        ("optozorax".to_string(), [ 
             vec![
                 vec!['й', 'к', 'я'], 
                 vec!['ц', 'м', 'ч'], 
@@ -381,7 +592,7 @@ fn main() {
                 vec!['г', 'о', 'ь', 'щ', 'р', 'ш'], 
             ]
         ]),
-        ("йцукен для тестов".to_string(), [
+        ("тестовый".to_string(), [
             vec![
                 vec!['й', 'к', 'я'], 
                 vec!['ц', 'м', 'ч'], 
@@ -395,7 +606,7 @@ fn main() {
                 vec!['е', 'о', 'ь', 'з', 'и', 'ш'], 
             ]
         ]),
-        ("раскладка kanazei".to_string(), [
+        ("kanazei".to_string(), [
             vec![
                 vec!['ё', 'ы'], 
                 vec!['ь', 'э', 'ъ'], 
@@ -484,7 +695,7 @@ fn main() {
                 vec!['l', 's', 'z'], 
             ]
         ]),
-        ("capewell 0.9.3".to_string(), [
+        ("capewell_0.9.3".to_string(), [
             vec![
                 vec!['a', 'x'], 
                 vec!['y', 'e', 'z'], 
@@ -506,23 +717,30 @@ fn main() {
         println!("Layout: {}", name);
 
         println!("{:?}", keyboard.get_pos(&'м'));
-        keyboard.print_parsed_word(&"саломам".to_string());
-        keyboard.print_parsed_word(&"седло".to_string());
-        keyboard.print_parsed_word(&"бывало".to_string());
-        keyboard.print_parsed_word(&"радоваться".to_string());
-        keyboard.print_parsed_word(&"фываолдж".to_string());
-        keyboard.print_parsed_word(&"сейчас".to_string());
-        keyboard.print_parsed_word(&"чирик".to_string());
-        keyboard.print_parsed_word(&"нефтеперерабатывающий".to_string());
-        keyboard.print_parsed_word(&"непосредственный".to_string());
-        keyboard.print_parsed_word(&"страстный".to_string());
-        keyboard.print_parsed_word(&"искусство".to_string());
+        keyboard.println_parsed_word(&"саломам".to_string());
+        keyboard.println_parsed_word(&"седло".to_string());
+        keyboard.println_parsed_word(&"бывало".to_string());
+        keyboard.println_parsed_word(&"радоваться".to_string());
+        keyboard.println_parsed_word(&"фываолдж".to_string());
+        keyboard.println_parsed_word(&"сейчас".to_string());
+        keyboard.println_parsed_word(&"чирик".to_string());
+        keyboard.println_parsed_word(&"нефтеперерабатывающий".to_string());
+        keyboard.println_parsed_word(&"непосредственный".to_string());
+        keyboard.println_parsed_word(&"страстный".to_string());
+        keyboard.println_parsed_word(&"искусство".to_string());
+
+        keyboard.println_parsed_word(&"сейчас".to_string());
+        keyboard.println_parsed_word(&"бывало".to_string());
+        keyboard.println_parsed_word(&"слова".to_string());
 
         let (good, bad) = count_rolls(&keyboard, &russian_stats);
-        let all_good_sum = print_rolls(&good, &"Good".to_string(), false);
-        let all_bad_sum = print_rolls(&bad, &"Bad ".to_string(), false);
+        let (all_good_sum, good_rolls) = print_rolls(&good, &"Good".to_string(), false);
+        let (all_bad_sum, bad_rolls) = print_rolls(&bad, &"Bad ".to_string(), false);
         println!("Percent of good presses in layout: {}%", (all_good_sum as f64)/((all_good_sum + all_bad_sum) as f64) * 100.0);
+        println!("Percent of rolls in layout: {}%", (all_good_sum as f64 * good_rolls + all_bad_sum as f64 * bad_rolls)/((all_good_sum + all_bad_sum) as f64) * 100.0);
         println!("");
+
+        write_supa_pupa_words(&keyboard, &russian_stats, &("out/rolls/".to_owned() + &name + ".txt"));
     }
 
     let english_stats = read_books_statistics("words/english.txt");
@@ -531,18 +749,21 @@ fn main() {
         println!("Layout: {}", name);
 
         println!("{:?}", keyboard.get_pos(&'f'));
-        keyboard.print_parsed_word(&"hello".to_string());
-        keyboard.print_parsed_word(&"should".to_string());
-        keyboard.print_parsed_word(&"must".to_string());
-        keyboard.print_parsed_word(&"doing".to_string());
-        keyboard.print_parsed_word(&"institution".to_string());
-        keyboard.print_parsed_word(&"right".to_string());
-        keyboard.print_parsed_word(&"clear".to_string());
+        keyboard.println_parsed_word(&"hello".to_string());
+        keyboard.println_parsed_word(&"should".to_string());
+        keyboard.println_parsed_word(&"must".to_string());
+        keyboard.println_parsed_word(&"doing".to_string());
+        keyboard.println_parsed_word(&"institution".to_string());
+        keyboard.println_parsed_word(&"right".to_string());
+        keyboard.println_parsed_word(&"clear".to_string());
 
         let (good, bad) = count_rolls(&keyboard, &english_stats);
-        let all_good_sum = print_rolls(&good, &"Good".to_string(), false);
-        let all_bad_sum = print_rolls(&bad, &"Bad ".to_string(), false);
+        let (all_good_sum, good_rolls) = print_rolls(&good, &"Good".to_string(), false);
+        let (all_bad_sum, bad_rolls) = print_rolls(&bad, &"Bad ".to_string(), false);
         println!("Percent of good presses in layout: {}%", (all_good_sum as f64)/((all_good_sum + all_bad_sum) as f64) * 100.0);
+        println!("Percent of rolls in layout: {}%", (all_good_sum as f64 * good_rolls + all_bad_sum as f64 * bad_rolls)/((all_good_sum + all_bad_sum) as f64) * 100.0);
         println!("");
+
+        write_supa_pupa_words(&keyboard, &english_stats, &("out/rolls/".to_owned() + &name + ".txt"));
     }
 }
