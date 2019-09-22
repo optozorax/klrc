@@ -1,5 +1,6 @@
 extern crate encoding;
 
+use std::cmp;
 use std::fs;
 use std::{
     fs::File,
@@ -78,19 +79,12 @@ fn with_position<I: Iterator>(mut iter: I) -> WithPosition<I> {
 
 type Keyboard = [Vec<Vec<char>>; 2];
 
-trait KeyboardParser {
-    fn get_pos(&self, c: &char) -> Result<LetterPos, ()>;
-    fn parse(&self, s: &String) -> Vec<Vec<String>>;
-    fn format_parsed_word(&self, s: &String) -> String;
-    fn print_parsed_word(&self, s: &String);
-    fn println_parsed_word(&self, s: &String);
-}
-
 
 #[derive(Debug, Copy, Clone)]
 struct LetterPos {
     hand: usize,
     finger: usize,
+    pos: usize,
 }
 
 enum RollDirection {
@@ -101,10 +95,45 @@ enum RollDirection {
 }
 
 type Presses = Vec<LetterPos>;
+type OneLetterCases = Vec<LetterPos>;
+type UncertainPresses = Vec<OneLetterCases>;
 type PressesOneHand = Vec<LetterPos>;
 type Roll = Vec<LetterPos>;
+type RollSplitted = Vec<Vec<Vec<LetterPos>>>;
 
-fn split_hands(positions: Presses) -> Vec<PressesOneHand> {
+trait KeyboardParser {
+    fn get_pos(&self, c: &char) -> Option<OneLetterCases>;
+    fn get_letter(&self, p: &LetterPos) -> char;
+    fn to_presses(&self, s: &String) -> UncertainPresses;
+    fn parse(&self, s: &String) -> Vec<Vec<String>>;
+    fn unparse(&self, p: &RollSplitted) -> Vec<Vec<String>>;
+    fn unparse0(&self, p: &Presses) -> String;
+    fn format_word(&self, parsed: &Vec<Vec<String>>) -> String;
+    fn format_parsed_word(&self, s: &String) -> String;
+    fn print_parsed_word(&self, s: &String);
+    fn println_parsed_word(&self, s: &String);
+}
+
+fn calc_word_metric(word: &RollSplitted) -> f64 {
+    let mut bad_count = 0;
+    let mut press_combinations = 0;
+    for hand in word {
+        for (pos, roll) in with_position(hand.iter()) {
+            press_combinations += 1;
+            match pos {
+                Pos::First => { },
+                Pos::Only => { },
+                _ => {
+                    bad_count += roll.len();    
+                }
+            }
+        }
+    }
+
+    bad_count as f64 * 100.0 + press_combinations as f64
+}
+
+fn split_hands(positions: &Presses) -> Vec<PressesOneHand> {
     let mut result: Vec<PressesOneHand> = vec![];
     let mut current_hand = std::usize::MAX;
     for pos in positions {
@@ -257,15 +286,46 @@ fn read_books_statistics(filename: &str) -> Vec<WordStatistic> {
 
     let file = fs::read_to_string(filename).unwrap();
 
+    let mut iterations = 500000;
+
     for line in file.split('\n') {
         let mut content = line.split('\t');
         let word = continue_if_none!(content.next());
         let count = continue_if_none!(content.next()).parse::<usize>().unwrap();
 
         result.push(WordStatistic { word: word.to_string(), count: count });
+
+        iterations -= 1;
+        if iterations <= 0 {
+            break;
+        }
     }
 
     result
+}
+
+fn count_combinations(stats: &Vec<WordStatistic>, cs: usize, name: &String) {
+    let mut combinations = HashMap::new();
+
+    for stat in stats {
+        let size = stat.word.chars().count();
+        for index in 0..(size-1) {
+            if index + cs < size {
+                let combination: String = stat.word.clone().chars().skip(index).take(cs).collect();
+                let ss = combinations.entry(combination).or_insert(0);
+                *ss += stat.count;
+            }
+            
+        }
+    }
+
+    let sorted_result = sort_rolls_hashmap(&combinations);
+
+    let write_file = File::create(format!("out/{}_{}_combinations.txt", name, cs)).unwrap();
+    let mut writer = BufWriter::new(&write_file);
+    for i in sorted_result {
+        writeln!(&mut writer, "{}\t{}", i.0, i.1).unwrap();
+    }
 }
 
 fn sort_words_hashmap(hashmap: &HashMap<String, usize>) -> Vec<(String, usize)> {
@@ -317,14 +377,15 @@ fn is_supa_pupa_roll_word(word: &Vec<Vec<String>>) -> bool {
     }
 
     if word.len() == 2 && 
-       word[0].len() == 1 && 
-       word[1].len() == 2 {
+       (word[0][0].chars().count() == 1 || 
+        word[1][0].chars().count() == 1) {
         result = false;
     }
 
-    if word.len() == 2 && 
-       (word[0].len() == 1 || 
-        word[1].len() == 1) {
+    if word.len() == 3 && 
+       (word[0][0].chars().count() == 1 &&
+        word[1][0].chars().count() == 2 && 
+        word[2][0].chars().count() == 1) {
         result = false;
     }
 
@@ -365,8 +426,16 @@ fn count_rolls(keyboard: &Keyboard, stats: &Vec<WordStatistic>) -> (Vec<(String,
     let mut good_rolls = HashMap::new();
     let mut bad_rolls = HashMap::new();
 
-    for stat in stats {
+    let stat_size = stats.len() as f64;
+    let stat_size_percent_count = stat_size as usize / 1000;
+    for (index, stat) in stats.iter().enumerate() {
+        if index > 100 && index % stat_size_percent_count == 0 {
+            print!("\r {:5.1}%, word: {:10}", index as f64 / stat_size * 100.0, index);
+        }
         let hand_mas = keyboard.parse(&stat.word);
+        // if index < 100 {
+        //     println!("{}: {}", stat.word, keyboard.format_parsed_word(&stat.word));
+        // }
         for roll_mas in hand_mas {
             let mut first = true;
             for roll in roll_mas {
@@ -381,8 +450,30 @@ fn count_rolls(keyboard: &Keyboard, stats: &Vec<WordStatistic>) -> (Vec<(String,
             }
         }
     }
+    println!("\r{:40}", "Done");
 
     (sort_rolls_hashmap(&good_rolls), sort_rolls_hashmap(&bad_rolls))
+}
+
+fn is_similiar_words(a: &String, b: &String) -> bool {
+    let asize = a.chars().count();
+    let bsize = b.chars().count();
+    let max_size = cmp::max(asize, bsize);
+    let min_size = cmp::min(asize, bsize);
+
+    if min_size+2 <= max_size {
+        return false
+    }
+    if max_size < 3 {
+        return false;
+    }
+
+    let substr_size = max_size - 2;
+
+    let a_substr: String = a.chars().take(substr_size).collect();
+    let b_substr: String = b.chars().take(substr_size).collect();
+    
+    a_substr == b_substr
 }
 
 fn write_supa_pupa_words(keyboard: &Keyboard, stats: &Vec<WordStatistic>, out_file: &String) {
@@ -399,24 +490,49 @@ fn write_supa_pupa_words(keyboard: &Keyboard, stats: &Vec<WordStatistic>, out_fi
     let mut writer = BufWriter::new(&write_file);
 
     // Собираем слова для словарей
-    for stat in stats {
+    'main: for stat in stats {
         let hand_mas = keyboard.parse(&stat.word);
         if is_alternation_word(&hand_mas) {
             if alternation_mas.len() < alternation_count {
+                for word in &alternation_mas {
+                    if is_similiar_words(word, &stat.word) {
+                        continue 'main;
+                    }
+                }
                 alternation_mas.push(stat.word.clone());
             }
         } else if is_supa_pupa_roll_word(&hand_mas) {
             if !is_with_triple_fourthle_roll(&hand_mas) {
                 if roll2_mas.len() < roll2_count {
+                    for word in &roll2_mas {
+                        if is_similiar_words(&word, &stat.word) {
+                            continue 'main;
+                        }
+                    }
                     roll2_mas.push(stat.word.clone());
                 }
             } else {
                 if roll3_mas.len() < roll3_count {
+                    for word in &roll3_mas {
+                        if is_similiar_words(&word, &stat.word) {
+                            continue 'main;
+                        }
+                    }
                     roll3_mas.push(stat.word.clone());
                 }
             }
         }
+
+        if roll2_mas.len() >= roll2_count &&
+           roll3_mas.len() >= roll3_count &&
+           alternation_mas.len() >= alternation_count {
+            break 'main;
+        }
     }
+
+    roll2_mas.sort();
+    roll3_mas.sort();
+    alternation_mas.sort();
 
     // Выводим первые 100 слов с перекатами только из двух букв
     writeln!(&mut writer, "First {} words with maximum alternation:", alternation_count).unwrap();
@@ -481,72 +597,148 @@ fn print_rolls(rolls_sorted: &Vec<(String, usize)>, name: &String, is_print_roll
     }
 
     let rolls = (roll_sum as f64)/(all_sum as f64);
-    println!("{} rolls count in layout: {}%", name, rolls * 100.0);
+    println!("{} rolls count in layout: {:.1}%", name, rolls * 100.0);
 
     (all_sum, rolls)
 }
 
-impl KeyboardParser for Keyboard {
-    fn get_pos(&self, c: &char) -> Result<LetterPos, ()> {
-        for (hand_no, hand) in self.iter().enumerate() {
-            for (finger_no, finger) in hand.iter().enumerate() {
-                for letter in finger {
-                    if letter == c {
-                        return Ok(LetterPos { hand: hand_no, finger: finger_no });
-                    }
-                }
-            }
-        }
-        return Err(());
+fn parse_rolls(p: &Presses) -> RollSplitted {
+    let mut result: RollSplitted = vec![];
+
+    let hand_splitted = split_hands(&p);
+    for hand in hand_splitted {
+        result.push(split_rolls(hand));
     }
 
-    fn parse(&self, s: &String) -> Vec<Vec<String>> {
-        let mut positions: Presses = vec![];
-        for c in s.chars() {
-            match self.get_pos(&c) {
-                Ok(pos) => positions.push(pos), 
-                Err(_) => println!("Error when trying to find pos of letter '{}'", c)
+    result
+}
+
+fn recurse_travel(up: &UncertainPresses, pos: &usize, mut result: (f64, usize, RollSplitted), mut word: &mut Presses, keyboard: &Keyboard) -> (f64, usize, RollSplitted) {
+    if pos < &up.len() {
+        for letter in &up[pos.clone()] {
+            word[pos.clone()] = *letter;
+            if result.1 > 100 {
+                print!("skip");
+                return result
             }
+            result = recurse_travel(&up, &(pos+1), result, &mut word, keyboard);
         }
+    } else {
+        let parsed = parse_rolls(&word.clone());
+        let gradue = calc_word_metric(&parsed);
+        // println!("{:5.0} - {}", gradue, keyboard.format_word(&keyboard.unparse(&parsed)));
+        if gradue < result.0 {
+            result = (gradue, result.1+1, parsed);
+        }
+    }
+    result
+}
 
-        let hand_splitted = split_hands(positions);
-        // println!("splitted by hand: {:?}", hand_splitted);
+fn certain_presses(up: &UncertainPresses, keyboard: &Keyboard) -> RollSplitted {
+    let mut result = (10000000.0, 0, vec![]);
+    let mut word = vec![LetterPos {hand: 0, finger: 0, pos: 0}; up.len()];
+    result = recurse_travel(&up, &0, result, &mut word, &keyboard);
 
-        let mut c = s.chars();
+    result.2.clone()
+}
 
-        let mut result: Vec<Vec<String>> = vec![];
-        for presses in hand_splitted {
-            result.push(vec![]);
+fn select_best_rolls(rolls: &Vec<RollSplitted>) -> RollSplitted {
+    let mut rolls_with_gradue = vec![];
+    for roll in rolls {
+        rolls_with_gradue.push((roll.clone(), calc_word_metric(roll)))
+    }
+    rolls_with_gradue.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(1.cmp(&1)));
 
-            let back = result.last_mut().unwrap();
-            let splitted_roll = split_rolls(presses);
-            
-            for roll in splitted_roll {
-                let mut roll_str = String::new();
-                for _ in roll {
-                    match c.next() {
-                        Some(c) => roll_str.push(c),
-                        None => {
+    rolls_with_gradue.first().unwrap().0.clone()
+}
 
-                        },
+impl KeyboardParser for Keyboard {
+    fn get_pos(&self, c: &char) -> Option<OneLetterCases> {
+        let mut result = vec![];
+
+        for (hand_no, hand) in self.iter().enumerate() {
+            for (finger_no, finger) in hand.iter().enumerate() {
+                for (letter_no, letter) in finger.iter().enumerate() {
+                    if letter == c {
+                        result.push(LetterPos { hand: hand_no, finger: finger_no, pos: letter_no });
                     }
                 }
-                back.push(roll_str);
             }
+        }
+        
+        if result.len() == 0 {
+            return None;
+        } else {
+            return Some(result);
+        }
+    }
+
+    fn get_letter(&self, p: &LetterPos) -> char {
+        self[p.hand][p.finger][p.pos]
+    }
+
+    fn to_presses(&self, s: &String) -> UncertainPresses {
+        let mut positions = vec![];
+        for c in s.chars() {
+            match self.get_pos(&c) {
+                Some(pos) => positions.push(pos), 
+                None => println!("Error when trying to find pos of letter '{}'", c)
+            }
+        }
+        positions
+    }
+
+    fn unparse(&self, p: &RollSplitted) -> Vec<Vec<String>> {
+        let mut result = vec![];
+
+        for hand in p {
+            let mut ss = vec![];
+            for roll in hand {
+                let mut s = String::new();
+                for letter in roll {
+                    s.push(self.get_letter(letter));
+                }
+                ss.push(s);
+            }
+            result.push(ss);
         }
 
         result
     }
 
-    fn format_parsed_word(&self, s: &String) -> String {
+    fn unparse0(&self, p: &Presses) -> String {
+        let mut s = String::new();
+        for letter in p {
+            s.push(self.get_letter(letter));
+        }
+        s
+    }
+
+    fn parse(&self, s: &String) -> Vec<Vec<String>> {
+        let uncertain_presses = self.to_presses(s);
+        let best_roll = certain_presses(&uncertain_presses, &self);
+        // if certain_presses_mas.len() > 1 {
+        //     println!("Pressess after certain: ");
+        //     for p in certain_presses_mas {
+        //         println!("    {}", self.format_word(&self.unparse(&parse_rolls(&p))));
+        //     }
+        //     println!("    Best roll: {}", self.format_word(&self.unparse(&best_roll)));
+        // }
+        self.unparse(&best_roll)
+    }
+
+    fn format_word(&self, parsed: &Vec<Vec<String>>) -> String {
         let mut result = String::new();
-        let parsed = self.parse(s);
         for hand in parsed {
             result += "[";
             result += &hand.join("·");
             result += "]";
         }
         result.to_string()
+    }
+
+    fn format_parsed_word(&self, s: &String) -> String {
+        self.format_word(&self.parse(s))
     }
 
     fn print_parsed_word(&self, s: &String) {
@@ -557,7 +749,6 @@ impl KeyboardParser for Keyboard {
         println!("");
     }
 }
-
 
 fn main() {
     read_books("./books/russian/".to_string(), "./out/russian_words.txt".to_string(), true);
@@ -709,9 +900,54 @@ fn main() {
                 vec!['q', 'o'], 
             ]
         ]),
+        ("double_dvorak".to_string(), [
+            vec![
+                vec!['s', 'p', 't'], 
+                vec!['d', 'h', 'n'], 
+                vec!['k', 'o', 'q'], 
+                vec!['f', 'u', 'j', 'i', 'e', 'x'], 
+            ],
+            vec![
+                vec!['y', 'o', 'b', 'g', 'a', 'v'], 
+                vec!['c', 'e', 'w'], 
+                vec!['r', 'h', 'm'], 
+                vec!['l', 't', 'z'], 
+            ]
+        ]),
+        ("workman".to_string(), [
+            vec![
+                vec!['q', 'a', 'z'], 
+                vec!['d', 's', 'x'], 
+                vec!['r', 'h', 'm'], 
+                vec!['w', 't', 'c', 'b', 'g', 'v'], 
+            ],
+            vec![
+                vec!['j', 'y', 'k', 'f', 'n', 'l'], 
+                vec!['u', 'e'], 
+                vec!['p', 'o'], 
+                vec!['i'], 
+            ]
+        ]),
+        ("colemak".to_string(), [
+            vec![
+                vec!['q', 'a', 'z'], 
+                vec!['w', 'r', 'x'], 
+                vec!['f', 's', 'c'], 
+                vec!['p', 't', 'v', 'g', 'd', 'b'], 
+            ],
+            vec![
+                vec!['j', 'h', 'k', 'l', 'n', 'm'], 
+                vec!['u', 'e'], 
+                vec!['y', 'i'], 
+                vec!['o'], 
+            ]
+        ]),
     ];
 
     let russian_stats = read_books_statistics("words/russian.txt");
+    for i in 1..5 {
+        count_combinations(&russian_stats, i, &"russian".to_string());
+    }
 
     for (name, keyboard) in russian_keyboards {
         println!("Layout: {}", name);
@@ -736,14 +972,22 @@ fn main() {
         let (good, bad) = count_rolls(&keyboard, &russian_stats);
         let (all_good_sum, good_rolls) = print_rolls(&good, &"Good".to_string(), false);
         let (all_bad_sum, bad_rolls) = print_rolls(&bad, &"Bad ".to_string(), false);
-        println!("Percent of good presses in layout: {}%", (all_good_sum as f64)/((all_good_sum + all_bad_sum) as f64) * 100.0);
-        println!("Percent of rolls in layout: {}%", (all_good_sum as f64 * good_rolls + all_bad_sum as f64 * bad_rolls)/((all_good_sum + all_bad_sum) as f64) * 100.0);
+        println!("Percent of good presses in layout: {:.1}%", (all_good_sum as f64)/((all_good_sum + all_bad_sum) as f64) * 100.0);
+        println!("Percent of rolls in layout: {:.1}%", (all_good_sum as f64 * good_rolls + all_bad_sum as f64 * bad_rolls)/((all_good_sum + all_bad_sum) as f64) * 100.0);
         println!("");
 
         write_supa_pupa_words(&keyboard, &russian_stats, &("out/rolls/".to_owned() + &name + ".txt"));
     }
 
     let english_stats = read_books_statistics("words/english.txt");
+
+    for i in 1..5 {
+        count_combinations(&english_stats, i, &"english".to_string());
+    }
+
+    // let dvorak2 = &english_keyboards[0];
+    // dvorak2.1.parse(&"that".to_string());
+    // return;
 
     for (name, keyboard) in english_keyboards {
         println!("Layout: {}", name);
@@ -760,8 +1004,8 @@ fn main() {
         let (good, bad) = count_rolls(&keyboard, &english_stats);
         let (all_good_sum, good_rolls) = print_rolls(&good, &"Good".to_string(), false);
         let (all_bad_sum, bad_rolls) = print_rolls(&bad, &"Bad ".to_string(), false);
-        println!("Percent of good presses in layout: {}%", (all_good_sum as f64)/((all_good_sum + all_bad_sum) as f64) * 100.0);
-        println!("Percent of rolls in layout: {}%", (all_good_sum as f64 * good_rolls + all_bad_sum as f64 * bad_rolls)/((all_good_sum + all_bad_sum) as f64) * 100.0);
+        println!("Percent of good presses in layout: {:.1}%", (all_good_sum as f64)/((all_good_sum + all_bad_sum) as f64) * 100.0);
+        println!("Percent of rolls in layout: {:.1}%", (all_good_sum as f64 * good_rolls + all_bad_sum as f64 * bad_rolls)/((all_good_sum + all_bad_sum) as f64) * 100.0);
         println!("");
 
         write_supa_pupa_words(&keyboard, &english_stats, &("out/rolls/".to_owned() + &name + ".txt"));
