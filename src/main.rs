@@ -79,6 +79,8 @@ fn with_position<I: Iterator>(mut iter: I) -> WithPosition<I> {
 
 type Keyboard = [Vec<Vec<char>>; 2];
 
+type KladenetsKeyboard = [Vec<char>; 2];
+
 
 #[derive(Debug, Copy, Clone)]
 struct LetterPos {
@@ -1010,4 +1012,89 @@ fn main() {
 
         write_supa_pupa_words(&keyboard, &english_stats, &("out/rolls/".to_owned() + &name + ".txt"));
     }
+
+     let kladenets_keyboards: Vec<(String, KladenetsKeyboard)> = vec![
+        ("standard".to_string(), [
+            vec!['б', 'в', 'г', 'д', 'ж', 'з', 'й', 'к', 'л', 'м', 'н', 'п', 'р', 'с', 'т', 'ф', 'х', 'ц', 'ч', 'ш', 'щ', 'ъ', 'э'],
+            vec!['а', 'е', 'ё', 'и', 'о', 'у', 'ы', 'ь', 'ю', 'я']
+        ])
+    ];
+
+    let russian_stats = read_books_statistics("words/russian.txt");
+
+    enum PolysymbolicState {
+        Start,
+        Constontant,
+        Vowel,
+        VowelAfterConstontant,
+    }
+
+    let kb = &kladenets_keyboards[0].1;
+
+    let mut global_chords = 0;
+    let mut letters = 0;
+    for (index, stat) in russian_stats.iter().enumerate() {
+        // if index > 50 {
+        //     break;
+        // }
+
+        let mut chords = 0;
+        let mut state = PolysymbolicState::Start;
+        for symbol in stat.word.chars() {
+            match kb[0].iter().find(|&&x| x == symbol) {
+                Some(_s) => {
+                    match state {
+                        PolysymbolicState::Start => {
+                            state = PolysymbolicState::Constontant;
+                        },
+                        PolysymbolicState::Constontant => {
+                            chords += 1;
+                            state = PolysymbolicState::Constontant;
+                        },
+                        PolysymbolicState::Vowel => {
+                            chords += 1;
+                            state = PolysymbolicState::Constontant;
+                        },
+                        PolysymbolicState::VowelAfterConstontant => {
+                            chords += 1;
+                            state = PolysymbolicState::Constontant;
+                        },
+                    }
+                },
+                None => {
+                    match kb[1].iter().find(|&&x| x == symbol) {
+                        Some(_s) => {
+                            match state {
+                                PolysymbolicState::Start => {
+                                    state = PolysymbolicState::Vowel;
+                                },
+                                PolysymbolicState::Constontant => {
+                                    state = PolysymbolicState::VowelAfterConstontant;
+                                },
+                                PolysymbolicState::Vowel => {
+                                    chords += 1;
+                                    state = PolysymbolicState::Vowel;
+                                },
+                                PolysymbolicState::VowelAfterConstontant => {
+                                    chords += 1;
+                                    state = PolysymbolicState::Vowel;
+                                },
+                            }
+                        },
+                        None => {
+                            println!("wtf?");
+                        }
+                    }
+                }
+            }
+        }
+        chords = chords/2 + chords%2;
+        chords += 1;
+        //println!("{} {}", stat.word, chords);
+
+        letters += stat.count * (stat.word.chars().count()+1);
+        global_chords += chords * stat.count;
+    }
+
+    println!("{}, {}, {}", letters, global_chords, (letters as f64)/(global_chords as f64));
 }
