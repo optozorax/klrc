@@ -1,4 +1,5 @@
 extern crate encoding;
+extern crate rand;
 
 use std::cmp;
 use std::fs;
@@ -15,6 +16,8 @@ use encoding::all::WINDOWS_1251;
 use encoding::{Encoding, DecoderTrap};
 
 use std::mem;
+
+use rand::Rng;
 
 // Thanks to red75prime https://play.rust-lang.org/?version=stable&mode=release&edition=2018&gist=e2f92e287e61cfab6e3bc6426a229aab
 
@@ -752,7 +755,162 @@ impl KeyboardParser for Keyboard {
     }
 }
 
+fn eval_one_handed_kladenets(kb: &KladenetsKeyboard, stats: &Vec<WordStatistic>) -> f64 {
+    enum PolysymbolicState {
+        Start,
+        Constontant,
+        Vowel,
+        VowelAfterConstontant,
+    }
+    let mut global_chords = 0;
+    let mut letters = 0;
+    for (index, stat) in stats.iter().enumerate() {
+        if index > 10000 {
+            break;
+        }
+
+        let mut chords = 0;
+        let mut state = PolysymbolicState::Start;
+        for symbol in stat.word.chars() {
+            match kb[0].iter().find(|&&x| x == symbol) {
+                Some(_s) => {
+                    match state {
+                        PolysymbolicState::Start => {
+                            state = PolysymbolicState::Constontant;
+                        },
+                        PolysymbolicState::Constontant => {
+                            chords += 1;
+                            state = PolysymbolicState::Constontant;
+                        },
+                        PolysymbolicState::Vowel => {
+                            chords += 1;
+                            state = PolysymbolicState::Constontant;
+                        },
+                        PolysymbolicState::VowelAfterConstontant => {
+                            chords += 1;
+                            state = PolysymbolicState::Constontant;
+                        },
+                    }
+                },
+                None => {
+                    match kb[1].iter().find(|&&x| x == symbol) {
+                        Some(_s) => {
+                            match state {
+                                PolysymbolicState::Start => {
+                                    state = PolysymbolicState::Vowel;
+                                },
+                                PolysymbolicState::Constontant => {
+                                    state = PolysymbolicState::VowelAfterConstontant;
+                                },
+                                PolysymbolicState::Vowel => {
+                                    chords += 1;
+                                    state = PolysymbolicState::Vowel;
+                                },
+                                PolysymbolicState::VowelAfterConstontant => {
+                                    chords += 1;
+                                    state = PolysymbolicState::Vowel;
+                                },
+                            }
+                        },
+                        None => {
+                            println!("wtf?");
+                        }
+                    }
+                }
+            }
+        }
+        chords += 1;
+
+        letters += stat.count * (stat.word.chars().count()+1);
+        global_chords += chords * stat.count;
+    }
+
+    let one_hand_kladenets = (letters as f64)/(global_chords as f64);
+    one_hand_kladenets
+}
+
+fn mutate(mut keyboard: KladenetsKeyboard, rng: &mut rand::rngs::ThreadRng) -> KladenetsKeyboard {
+    let a = rng.gen_range(0, keyboard[0].len());
+    let b = rng.gen_range(0, keyboard[1].len());
+
+    let tmp = keyboard[0][a];
+    keyboard[0][a] = keyboard[1][b];
+    keyboard[1][b] = tmp;
+
+    keyboard
+}
+
+fn manymutate(mut keyboard: KladenetsKeyboard, rng: &mut rand::rngs::ThreadRng) -> KladenetsKeyboard {
+    for _ in 0..100 {
+        keyboard = mutate(keyboard, rng);
+    }
+    keyboard
+}
+
+fn find_optimal_kladenets_layout(stats: &Vec<WordStatistic>) -> (KladenetsKeyboard, f64) {
+    let kb: KladenetsKeyboard = [vec!['а', 'е', 'ё', 'д', 'о', 'у', 'ы', 'ь', 'ю', 'я', 'н', 'п', 'р', 'с', 'ж', 'ф', 'х', 'ц', 'ч', 'ш', 'щ', 'ъ', 'э'], vec!['б', 'в', 'г', 'и', 'т', 'з', 'й', 'к', 'л', 'м']];
+
+    let mut rng = rand::thread_rng();
+
+    let populationSize = 50;
+    let generations = 50;
+    let evolutionsCount = 5;
+    let bestCount = 5;
+    let bestChildrenCount = populationSize/bestCount - 1;
+
+    let mut best = (kb.clone(), eval_one_handed_kladenets(&kb, stats));
+    for evolution in 0..evolutionsCount {
+        println!("New evolution {}", evolution);
+        // Инициализируем популяцию
+        let mut population: Vec<KladenetsKeyboard> = vec![];
+        for _ in 0..populationSize {
+            population.push(manymutate(kb.clone(), &mut rng));
+        }
+        for generation in 0..generations {
+            let mut evaledPopulation: Vec<(KladenetsKeyboard, f64)> = population.iter().map(|k| (k.clone(), eval_one_handed_kladenets(k, &stats))).collect();
+            if evaledPopulation[0].1 > best.1 {
+                best = evaledPopulation[0].clone();
+                println!("Found new best: {:?}, {}", best.0, best.1);
+            }
+            println!("New generation {}, best: {}", generation, evaledPopulation[0].1);
+            evaledPopulation.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap().reverse());
+            population = vec![];
+
+            for best in 0..bestCount {
+                population.push(evaledPopulation[best].0.clone());
+                for _ in 0..bestChildrenCount {
+                    population.push(mutate(evaledPopulation[best].0.clone(), &mut rng));
+                }
+            }
+        }
+    }
+    best
+}
+
+fn eval_kladenets_misc() {
+    let kladenets_keyboards: Vec<(String, KladenetsKeyboard)> = vec![
+        ("standard".to_string(), [
+            vec!['б', 'в', 'г', 'д', 'ж', 'з', 'й', 'к', 'л', 'м', 'н', 'п', 'р', 'с', 'т', 'ф', 'х', 'ц', 'ч', 'ш', 'щ', 'ъ', 'э'],
+            vec!['а', 'е', 'ё', 'и', 'о', 'у', 'ы', 'ь', 'ю', 'я']
+        ])
+    ];
+
+    let russian_stats = read_books_statistics("words/russian.txt");
+
+    let kb = &kladenets_keyboards[0].1;
+
+    let one_hand_kladenets = eval_one_handed_kladenets(&kb, &russian_stats);
+    println!("{}, {}", one_hand_kladenets, one_hand_kladenets * 2.0);
+
+    // Ищем лучшую раскладку Кладенца при помощи генетического алгоритма
+    let best = find_optimal_kladenets_layout(&russian_stats);
+    println!("{:?}, {}", best.0, best.1);
+}
+
 fn main() {
+    eval_kladenets_misc();
+    return;
+
     read_books("./books/russian/".to_string(), "./out/russian_words.txt".to_string(), true);
     read_books("./books/english/".to_string(), "./out/english_words.txt".to_string(), false);
 
@@ -1012,89 +1170,4 @@ fn main() {
 
         write_supa_pupa_words(&keyboard, &english_stats, &("out/rolls/".to_owned() + &name + ".txt"));
     }
-
-     let kladenets_keyboards: Vec<(String, KladenetsKeyboard)> = vec![
-        ("standard".to_string(), [
-            vec!['б', 'в', 'г', 'д', 'ж', 'з', 'й', 'к', 'л', 'м', 'н', 'п', 'р', 'с', 'т', 'ф', 'х', 'ц', 'ч', 'ш', 'щ', 'ъ', 'э'],
-            vec!['а', 'е', 'ё', 'и', 'о', 'у', 'ы', 'ь', 'ю', 'я']
-        ])
-    ];
-
-    let russian_stats = read_books_statistics("words/russian.txt");
-
-    enum PolysymbolicState {
-        Start,
-        Constontant,
-        Vowel,
-        VowelAfterConstontant,
-    }
-
-    let kb = &kladenets_keyboards[0].1;
-
-    let mut global_chords = 0;
-    let mut letters = 0;
-    for (index, stat) in russian_stats.iter().enumerate() {
-        // if index > 50 {
-        //     break;
-        // }
-
-        let mut chords = 0;
-        let mut state = PolysymbolicState::Start;
-        for symbol in stat.word.chars() {
-            match kb[0].iter().find(|&&x| x == symbol) {
-                Some(_s) => {
-                    match state {
-                        PolysymbolicState::Start => {
-                            state = PolysymbolicState::Constontant;
-                        },
-                        PolysymbolicState::Constontant => {
-                            chords += 1;
-                            state = PolysymbolicState::Constontant;
-                        },
-                        PolysymbolicState::Vowel => {
-                            chords += 1;
-                            state = PolysymbolicState::Constontant;
-                        },
-                        PolysymbolicState::VowelAfterConstontant => {
-                            chords += 1;
-                            state = PolysymbolicState::Constontant;
-                        },
-                    }
-                },
-                None => {
-                    match kb[1].iter().find(|&&x| x == symbol) {
-                        Some(_s) => {
-                            match state {
-                                PolysymbolicState::Start => {
-                                    state = PolysymbolicState::Vowel;
-                                },
-                                PolysymbolicState::Constontant => {
-                                    state = PolysymbolicState::VowelAfterConstontant;
-                                },
-                                PolysymbolicState::Vowel => {
-                                    chords += 1;
-                                    state = PolysymbolicState::Vowel;
-                                },
-                                PolysymbolicState::VowelAfterConstontant => {
-                                    chords += 1;
-                                    state = PolysymbolicState::Vowel;
-                                },
-                            }
-                        },
-                        None => {
-                            println!("wtf?");
-                        }
-                    }
-                }
-            }
-        }
-        chords = chords/2 + chords%2;
-        chords += 1;
-        //println!("{} {}", stat.word, chords);
-
-        letters += stat.count * (stat.word.chars().count()+1);
-        global_chords += chords * stat.count;
-    }
-
-    println!("{}, {}, {}", letters, global_chords, (letters as f64)/(global_chords as f64));
 }
