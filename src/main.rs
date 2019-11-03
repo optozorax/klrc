@@ -830,12 +830,30 @@ fn eval_one_handed_kladenets(kb: &KladenetsKeyboard, stats: &Vec<WordStatistic>)
 }
 
 fn mutate(mut keyboard: KladenetsKeyboard, rng: &mut rand::rngs::ThreadRng) -> KladenetsKeyboard {
-    let a = rng.gen_range(0, keyboard[0].len());
-    let b = rng.gen_range(0, keyboard[1].len());
+    if rng.gen_range(0, 10) == 0 {
+        if keyboard[0].len() > 0 && keyboard[1].len() > 0 {
+            if rng.gen_range(0, 2) == 0 {
+                let elem = keyboard[0].pop().unwrap();
+                keyboard[1].push(elem);
+            } else {
+                let elem = keyboard[1].pop().unwrap();
+                keyboard[0].push(elem);
+            }
+        } else if keyboard[0].len() == 0 {
+            let elem = keyboard[1].pop().unwrap();
+            keyboard[0].push(elem);
+        } else if keyboard[1].len() == 0 {
+            let elem = keyboard[0].pop().unwrap();
+            keyboard[1].push(elem);
+        }
+    } else {
+        let a = rng.gen_range(0, keyboard[0].len());
+        let b = rng.gen_range(0, keyboard[1].len());
 
-    let tmp = keyboard[0][a];
-    keyboard[0][a] = keyboard[1][b];
-    keyboard[1][b] = tmp;
+        let tmp = keyboard[0][a];
+        keyboard[0][a] = keyboard[1][b];
+        keyboard[1][b] = tmp;
+    }
 
     keyboard
 }
