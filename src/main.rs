@@ -905,6 +905,25 @@ fn find_optimal_kladenets_layout(stats: &Vec<WordStatistic>) -> (KladenetsKeyboa
     best
 }
 
+fn count_vowels() {
+    let russian_stats = read_books_statistics("words/russian.txt");
+    let mut pinky_spaces = 0;
+    let mut thumb_spaces = 0;
+    let kladenets_vowels = vec!['а', 'е', 'ё', 'и', 'о', 'у', 'ы', 'ь', 'ю', 'я'];
+    for stat in russian_stats {
+        if kladenets_vowels.contains(&stat.word.chars().last().unwrap()) {
+            pinky_spaces += stat.count;
+        } else {
+            thumb_spaces += stat.count;
+        }
+
+        break;
+    }
+
+    let all_spaces = pinky_spaces + thumb_spaces;
+    println!("мизинчиковый пробел: {}%, тамбовый пробел: {}%", pinky_spaces as f64/all_spaces as f64 * 100.0, thumb_spaces as f64/all_spaces as f64 * 100.0);
+}
+
 fn eval_kladenets_misc() {
     let kladenets_keyboards: Vec<(String, KladenetsKeyboard)> = vec![
         ("standard".to_string(), [
@@ -926,6 +945,9 @@ fn eval_kladenets_misc() {
 }
 
 fn main() {
+    count_vowels();
+    return;
+
     eval_kladenets_misc();
     return;
 
