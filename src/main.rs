@@ -272,6 +272,7 @@ fn read_books(dir: String, out: String, is_russian: bool) {
     }
 }
 
+#[derive(Clone, Debug)]
 struct WordStatistic {
     word: String,
     count: usize
@@ -304,6 +305,19 @@ fn read_books_statistics(filename: &str) -> Vec<WordStatistic> {
         if iterations <= 0 {
             break;
         }
+    }
+
+    result
+}
+
+fn cut_statistics(stats: &Vec<WordStatistic>, size: usize) -> Vec<WordStatistic> {
+    let mut result: Vec<WordStatistic> = vec![];
+
+    for (index, stat) in stats.iter().enumerate() {
+        if index > size {
+            break;
+        }
+        result.push(stat.clone());
     }
 
     result
@@ -435,7 +449,7 @@ fn count_rolls(keyboard: &Keyboard, stats: &Vec<WordStatistic>) -> (Vec<(String,
     let stat_size_percent_count = stat_size as usize / 1000;
     for (index, stat) in stats.iter().enumerate() {
         if index > 100 && index % stat_size_percent_count == 0 {
-            print!("\r {:5.1}%, word: {:10}", index as f64 / stat_size * 100.0, index);
+            //print!("\r {:5.1}%, word: {:10}", index as f64 / stat_size * 100.0, index);
         }
         let hand_mas = keyboard.parse(&stat.word);
         // if index < 100 {
@@ -455,7 +469,7 @@ fn count_rolls(keyboard: &Keyboard, stats: &Vec<WordStatistic>) -> (Vec<(String,
             }
         }
     }
-    println!("\r{:40}", "Done");
+    //println!("\r{:40}", "Done");
 
     (sort_rolls_hashmap(&good_rolls), sort_rolls_hashmap(&bad_rolls))
 }
@@ -580,16 +594,7 @@ fn write_supa_pupa_words(keyboard: &Keyboard, stats: &Vec<WordStatistic>, out_fi
     // }
 }
 
-fn print_rolls(rolls_sorted: &Vec<(String, usize)>, name: &String, is_print_rolls: bool) -> (usize, f64) {
-    if is_print_rolls {
-        for (index, (roll, count)) in rolls_sorted.iter().enumerate() {
-            println!("{}\t{}", roll, count);
-            if index > 40 {
-                break;
-            }
-        }
-    }
-
+fn count_rolls_sum(rolls_sorted: &Vec<(String, usize)>) -> (usize, f64) {
     let mut roll_sum = 0;
     let mut all_sum = 0;
 
@@ -602,6 +607,22 @@ fn print_rolls(rolls_sorted: &Vec<(String, usize)>, name: &String, is_print_roll
     }
 
     let rolls = (roll_sum as f64)/(all_sum as f64);
+
+    (all_sum, rolls)
+}
+
+fn print_rolls(rolls_sorted: &Vec<(String, usize)>, name: &String, is_print_rolls: bool) -> (usize, f64) {
+    if is_print_rolls {
+        for (index, (roll, count)) in rolls_sorted.iter().enumerate() {
+            println!("{}\t{}", roll, count);
+            if index > 40 {
+                break;
+            }
+        }
+    }
+
+    let (all_sum, rolls) = count_rolls_sum(rolls_sorted);
+
     println!("{} rolls count in layout: {:.1}%", name, rolls * 100.0);
 
     (all_sum, rolls)
@@ -944,7 +965,178 @@ fn eval_kladenets_misc() {
     println!("{:?}, {}", best.0, best.1);
 }
 
+fn count_good_rolls_percent(creature_keyboard: &Keyboard, evolution_stats: &Vec<WordStatistic>) -> f64 {
+    let (good, bad) = count_rolls(&creature_keyboard, &evolution_stats);
+    let (all_good_sum, good_rolls) = count_rolls_sum(&good);
+    let (all_bad_sum, bad_rolls) = count_rolls_sum(&bad);
+
+    let good_rolls = all_good_sum as f64 * good_rolls;
+    let bad_rolls = all_bad_sum as f64 * bad_rolls;
+
+    let good_percent = (good_rolls) / (all_good_sum + all_bad_sum) as f64;
+
+    good_percent
+}
+
+struct KeyboardPos (usize, usize, usize);
+
+fn swap(keyboard: &mut Keyboard, a: KeyboardPos, b: KeyboardPos) {
+    let firstEmpty = keyboard[a.0][a.1].len() == 0;
+    let secondEmpty = keyboard[b.0][b.1].len() == 0;
+    if !firstEmpty && !secondEmpty {
+        let tmp = keyboard[a.0][a.1][a.2];
+        keyboard[a.0][a.1][a.2] = keyboard[b.0][b.1][b.2];
+        keyboard[b.0][b.1][b.2] = tmp;
+    } else if firstEmpty && secondEmpty {
+        // do nothing
+    } else if firstEmpty && !secondEmpty {
+        stole(keyboard, a, b);
+    } else if !firstEmpty && secondEmpty {
+        stole(keyboard, b, a);
+    }
+}
+
+fn stole(keyboard: &mut Keyboard, from: KeyboardPos, to: KeyboardPos) {
+    let letter = keyboard[from.0][from.1].swap_remove(from.2);
+    keyboard[to.0][to.1].push(letter);
+}
+
+fn gen_random_keyboard_pos(keyboard: &Keyboard, rng: &mut rand::rngs::ThreadRng) -> KeyboardPos {
+    let mut result = KeyboardPos(0, 0, 0);
+    result.0 = rng.gen_range(0, keyboard.len());
+    result.1 = rng.gen_range(0, keyboard[result.0].len());
+    result.2 = rng.gen_range(0, keyboard[result.0][result.1].len());
+    result
+}
+
+fn mutate_keyboard(keyboard: &Keyboard, rng: &mut rand::rngs::ThreadRng) -> Keyboard {
+    let mut result = keyboard.clone();
+
+    let a = gen_random_keyboard_pos(&result, rng);
+    let b = gen_random_keyboard_pos(&result, rng);
+    swap(&mut result, a, b);
+    // println!("{:?}\n{:?}", keyboard, result);
+
+    result
+}
+
+fn calc_best_rolls_layout_by_evolution(creature_keyboard: &Keyboard, evolution_stats: &Vec<WordStatistic>) {
+    let mut rng = rand::thread_rng();
+
+    let population_size = 50;
+    let generations = 100;
+    let evolutions_count = 1;
+    let best_count = 5;
+    let best_children_count = population_size/best_count - 1;
+
+    let mut best = (creature_keyboard.clone(), count_good_rolls_percent(&creature_keyboard, &evolution_stats));
+    for evolution in 0..evolutions_count {
+        println!("New evolution {}", evolution);
+        // Инициализируем популяцию
+        let mut population: Vec<Keyboard> = vec![];
+        for _ in 0..population_size {
+            population.push(mutate_keyboard(&creature_keyboard, &mut rng));
+        }
+        for generation in 0..generations {
+            let mut evaled_population: Vec<(Keyboard, f64)> = population.iter().map(|k| (k.clone(), count_good_rolls_percent(&k, &evolution_stats))).collect();
+            if evaled_population[0].1 > best.1 {
+                best = evaled_population[0].clone();
+                println!("Found new best: {:?}, {}", best.0, best.1);
+            }
+            println!("New generation {}, best: {}", generation, evaled_population[0].1);
+            evaled_population.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap().reverse());
+            population = vec![];
+
+            for best in 0..best_count {
+                population.push(evaled_population[best].0.clone());
+                for _ in 0..best_children_count {
+                    population.push(mutate_keyboard(&evaled_population[best].0, &mut rng));
+                }
+            }
+        }
+    }
+
+    println!("Overall best: {:?}, {}", best.0, best.1);
+}
+
+fn calc_best_rolls_layout() {
+    let english_stats = read_books_statistics("words/english.txt");
+    let evolution_stats_eng = cut_statistics(&english_stats, 10000);
+
+    let creature_keyboard_eng_1 = [
+        vec![
+            vec!['q', 'a', 'z'], 
+            vec!['w', 's', 'x'], 
+            vec!['e', 'd', 'c'], 
+            vec!['r', 'f', 'v', 'b', 'g', 't'], 
+        ],
+        vec![
+            vec!['y', 'h', 'n', 'u', 'j', 'm'], 
+            vec!['i', 'k', '.'], 
+            vec!['o', 'l', '.'], 
+            vec!['p', '.', '.'], 
+        ]
+    ];
+
+    let creature_keyboard_eng_2 = [
+        vec![
+            vec!['q', 'a', 'z'], 
+            vec!['w', 's', 'x'], 
+            vec!['e', 'd', 'c'], 
+            vec!['r', 'f', 'v', 'b', 'g', 't'], 
+        ],
+        vec![
+            vec!['y', 'h', 'n', 'u', 'j', 'm'], 
+            vec!['i', 'k', 't'], 
+            vec!['o', 'l', 'a'], 
+            vec!['p', 'o', 'e'], 
+        ]
+    ];
+
+    calc_best_rolls_layout_by_evolution(&creature_keyboard_eng_1, &evolution_stats_eng);
+    calc_best_rolls_layout_by_evolution(&creature_keyboard_eng_2, &evolution_stats_eng);
+
+    let russian_stats = read_books_statistics("words/russian.txt");
+    let evolution_stats_rus = cut_statistics(&russian_stats, 10000);
+
+    let creature_keyboard_rus_1 = [
+        vec![
+            vec!['й', 'ф', 'я', 'ё', '.', '.'], 
+            vec!['ц', 'ы', 'ч'], 
+            vec!['у', 'в', 'с'], 
+            vec!['к', 'а', 'м', 'е', 'п', 'и'], 
+        ],
+        vec![
+            vec!['з', 'ж', 'х', 'э', 'ъ', '.'], 
+            vec!['щ', 'д', 'ю'], 
+            vec!['ш', 'л', 'б'], 
+            vec!['г', 'о', 'ь', 'н', 'р', 'т'], 
+        ]
+    ];
+
+    let creature_keyboard_rus_2 = [
+        vec![
+            vec!['й', 'ф', 'я', 'ё', 'о', 'а'], 
+            vec!['ц', 'ы', 'ч'], 
+            vec!['у', 'в', 'с'], 
+            vec!['к', 'а', 'м', 'е', 'п', 'и'], 
+        ],
+        vec![
+            vec!['з', 'ж', 'х', 'э', 'ъ', 'т'], 
+            vec!['щ', 'д', 'ю'], 
+            vec!['ш', 'л', 'б'], 
+            vec!['г', 'о', 'ь', 'н', 'р', 'т'], 
+        ]
+    ];
+
+    calc_best_rolls_layout_by_evolution(&creature_keyboard_rus_1, &evolution_stats_rus);
+    calc_best_rolls_layout_by_evolution(&creature_keyboard_rus_2, &evolution_stats_rus);
+}
+
 fn main() {
+    calc_best_rolls_layout();
+    return;
+
     count_vowels();
     return;
 
@@ -1055,6 +1247,34 @@ fn main() {
                 vec!['х', 'л', 'г', 'э'], 
             ]
         ]),
+        ("эволюция 1".to_string(), [
+            vec![
+                vec!['у', 'ы', 'я', 'о', 'ь', '.'], 
+                vec!['ш', 'с', 'г'], 
+                vec!['б', 'т', 'п'], 
+                vec!['й', 'к', 'э', 'ч', 'в', 'х']
+            ], 
+            vec![
+                vec!['ф', 'ж', '.', 'м', 'ц', 'д'], 
+                vec!['з', 'е', 'ю'], 
+                vec!['ё', 'а', 'и'], 
+                vec!['н', 'л', 'щ', 'ъ', 'р', '.']
+            ]
+        ]),
+        ("эволюция 2".to_string(), [
+            vec![
+                vec!['в', 'м', 'я', 'ё', 'у', 'ь'], 
+                vec!['а', 'ы', 'о'], 
+                vec!['д', 'к', 'т'], 
+                vec!['ц', 'э', 'ш', 'б', 'с', 'ч']
+            ], 
+            vec![
+                vec!['ж', 'з', 'й', 'ф', 'т', 'п'], 
+                vec!['ю', 'г', 'и'], 
+                vec!['е', 'а', 'о'], 
+                vec!['щ', 'л', 'х', 'р', 'н', 'ъ']
+            ]
+        ]),
     ];
 
     let english_keyboards: Vec<(String, Keyboard)> = vec![
@@ -1142,6 +1362,48 @@ fn main() {
                 vec!['o'], 
             ]
         ]),
+        ("evolutionary 1".to_string(), [
+            vec![
+                vec!['b', 'r', 'x'], 
+                vec!['l', 'm', 'k'], 
+                vec!['e', 'u', 'z'], 
+                vec!['d', 'y', 'v', 'p', 'g', 'q']
+            ], 
+            vec![
+                vec!['f', 'h', 'c', 'n', 'j', 's'], 
+                vec!['a', 'o'], 
+                vec!['t', 'w'], 
+                vec!['i']
+            ]
+        ]),
+        ("evolutionary 2".to_string(), [
+            vec![
+                vec!['a', 'o', '.'], 
+                vec!['n', 'h', 'u'], 
+                vec!['w', 'c', 'p'], 
+                vec!['q', 'f', '.', 'j', 'g', 't']
+            ], 
+            vec![
+                vec!['l', 'x', 'm', 'r', 'z', 'v'], 
+                vec!['i', 'k', 'y'], 
+                vec!['.', 'e', '.'], 
+                vec!['b', 's', 'd']
+            ]
+        ]),
+        ("evolutionary 3".to_string(), [
+            vec![
+                vec!['z', 'a', 'u'], 
+                vec!['n', 'm', 'l'], 
+                vec!['e', 'q', 'o'], 
+                vec!['y', 'd', 'j', 'g', 't', 'p']
+            ], 
+            vec![
+                vec!['w', 'h', 'b', 'c', 'v', 'f'], 
+                vec!['a', 'k', 't'], 
+                vec!['o', 'e', 'i'], 
+                vec!['x', 'r', 's']
+            ]
+        ]),
     ];
 
     let russian_stats = read_books_statistics("words/russian.txt");
@@ -1189,7 +1451,7 @@ fn main() {
     // dvorak2.1.parse(&"that".to_string());
     // return;
 
-    for (name, keyboard) in english_keyboards {
+    for (name, keyboard) in &english_keyboards {
         println!("Layout: {}", name);
 
         println!("{:?}", keyboard.get_pos(&'f'));
