@@ -290,7 +290,7 @@ macro_rules! continue_if_none {
 fn read_books_statistics(filename: &str) -> Vec<WordStatistic> {
     let mut result = vec![];
 
-    let file = fs::read_to_string(filename).unwrap();
+    let file = fs::read_to_string(filename).expect(filename);
 
     let mut iterations = 500000;
 
@@ -1134,33 +1134,45 @@ fn calc_best_rolls_layout() {
 }
 
 fn main() {
-    calc_best_rolls_layout();
+    read_books_statistics("words/russian.txt").into_iter().filter(|x| x.word.contains('з') || x.word.contains('г')).take(1000).for_each(|x| println!("{}", x.word));
+
     return;
 
-    count_vowels();
-    return;
+    // read_books("./books/russian/".to_string(), "./out/russian_words.txt".to_string(), true);
+    // let russian_stats = read_books_statistics("out/russian_words.txt");
+    // for i in 1..5 {
+    //     count_combinations(&russian_stats, i, &"russian".to_string());
+    // }
+    // return;
 
-    eval_kladenets_misc();
-    return;
 
-    read_books("./books/russian/".to_string(), "./out/russian_words.txt".to_string(), true);
-    read_books("./books/english/".to_string(), "./out/english_words.txt".to_string(), false);
+    // calc_best_rolls_layout();
+    // return;
+
+    // count_vowels();
+    // return;
+
+    // eval_kladenets_misc();
+    // return;
+
+    // read_books("./books/russian/".to_string(), "./out/russian_words.txt".to_string(), true);
+    // read_books("./books/english/".to_string(), "./out/english_words.txt".to_string(), false);
 
     let russian_keyboards: Vec<(String, Keyboard)> = vec![
-        ("йцукен".to_string(), [
-            vec![
-                vec!['й', 'ф', 'я', 'ё'], 
-                vec!['ц', 'ы', 'ч'], 
-                vec!['у', 'в', 'с'], 
-                vec!['к', 'а', 'м', 'е', 'п', 'и'], 
-            ],
-            vec![
-                vec!['з', 'ж', 'х', 'э', 'ъ'], 
-                vec!['щ', 'д', 'ю'], 
-                vec!['ш', 'л', 'б'], 
-                vec!['г', 'о', 'ь', 'н', 'р', 'т'], 
-            ]
-        ]),
+        // ("йцукен".to_string(), [
+        //     vec![
+        //         vec!['й', 'ф', 'я', 'ё'], 
+        //         vec!['ц', 'ы', 'ч'], 
+        //         vec!['у', 'в', 'с'], 
+        //         vec!['к', 'а', 'м', 'е', 'п', 'и'], 
+        //     ],
+        //     vec![
+        //         vec!['з', 'ж', 'х', 'э', 'ъ'], 
+        //         vec!['щ', 'д', 'ю'], 
+        //         vec!['ш', 'л', 'б'], 
+        //         vec!['г', 'о', 'ь', 'н', 'р', 'т'], 
+        //     ]
+        // ]),
         ("optozorax".to_string(), [ 
             vec![
                 vec!['й', 'к', 'я'], 
@@ -1175,241 +1187,269 @@ fn main() {
                 vec!['г', 'о', 'ь', 'щ', 'р', 'ш'], 
             ]
         ]),
-        ("тестовый".to_string(), [
+        ("optozorax2".to_string(), [ 
             vec![
-                vec!['й', 'к', 'я'], 
-                vec!['ц', 'м', 'ч'], 
-                vec!['у', 'в', 'п'], 
-                vec!['р', 'а', 'г', 'ф', 'щ', 'ы'], 
+                vec!['ц', 'э', 'й', 'к', 'я'], 
+                vec!['п', 'м', 'ч'], 
+                vec!['у', 'в', 'с'], 
+                vec!['е', 'а', 'и', 'ё', 'о', 'ы'], 
             ],
             vec![
-                vec!['с', 'ж', 'х', 'ъ', 'э', 'ё'], 
-                vec!['н', 'д', 'ю'], 
+                vec!['г', 'р', 'х', 'ж', 'ф'], 
+                vec!['н', 'д', 'ш'], 
                 vec!['т', 'л', 'б'], 
-                vec!['е', 'о', 'ь', 'з', 'и', 'ш'], 
+                vec!['з', 'о', 'ь', 'щ', 'а', 'ъ', 'ю'], 
             ]
         ]),
-        ("kanazei".to_string(), [
+        // ("тестовый".to_string(), [
+        //     vec![
+        //         vec!['й', 'к', 'я'], 
+        //         vec!['ц', 'м', 'ч'], 
+        //         vec!['у', 'в', 'п'], 
+        //         vec!['р', 'а', 'г', 'ф', 'щ', 'ы'], 
+        //     ],
+        //     vec![
+        //         vec!['с', 'ж', 'х', 'ъ', 'э', 'ё'], 
+        //         vec!['н', 'д', 'ю'], 
+        //         vec!['т', 'л', 'б'], 
+        //         vec!['е', 'о', 'ь', 'з', 'и', 'ш'], 
+        //     ]
+        // ]),
+        // ("kanazei".to_string(), [
+        //     vec![
+        //         vec!['ё', 'ы'], 
+        //         vec!['ь', 'э', 'ъ'], 
+        //         vec!['у', 'а'], 
+        //         vec!['и', 'о', 'ю', 'я'], 
+        //         vec!['е'], 
+        //     ],
+        //     vec![
+        //         vec!['ц', 'ш', 'й', 'д', 'х', 'ч'], 
+        //         vec!['з', 'с', 'ж'], 
+        //         vec!['щ', 'к', 'т', 'п'], 
+        //         vec!['в', 'н', 'м', 'б', 'л', 'г', 'ф'], 
+        //         vec!['р'], 
+        //     ]
+        // ]),
+        // ("диктор".to_string(), [
+        //     vec![
+        //         vec!['ц', 'у', 'ф', 'ё'], 
+        //         vec!['ь', 'и', 'э', 'ъ'], 
+        //         vec!['я', 'е', 'х'], 
+        //         vec!['о', 'ы', 'а', 'ю'], 
+        //     ],
+        //     vec![
+        //         vec!['з', 'л', 'б', 'в', 'н', 'м'], 
+        //         vec!['к', 'т', 'п'], 
+        //         vec!['д', 'с', 'г'], 
+        //         vec!['ч', 'р', 'ж', 'й', 'ш', 'щ'], 
+        //     ]
+        // ]),
+        // ("зубачёв".to_string(), [
+        //     vec![
+        //         vec!['ф', 'г', 'ш', 'ё'], 
+        //         vec!['ы', 'и', 'ь', 'ъ'], 
+        //         vec!['а', 'е', 'ю'], 
+        //         vec!['я', 'о', 'у', 'э'], 
+        //     ],
+        //     vec![
+        //         vec!['й', 'л', 'б', 'м', 'т', 'д'], 
+        //         vec!['р', 'с', 'в'], 
+        //         vec!['п', 'н', 'к'], 
+        //         vec!['х', 'з', 'ч', 'ц', 'ж', 'щ'], 
+        //     ]
+        // ]),
+        // ("bouncepaw".to_string(), [
+        //     vec![
+        //         vec!['ж', 'з', 'в', 'й'], 
+        //         vec!['п', 'с', 'ч'], 
+        //         vec!['р', 'т', 'м'], 
+        //         vec!['д', 'н', 'к', 'ф'], 
+        //     ],
+        //     vec![
+        //         vec!['ь', 'е', 'а', 'щ', 'ё', 'ъ', 'ц'], 
+        //         vec!['я', 'о', 'ы', 'ю', 'ш'], 
+        //         vec!['у', 'и', 'б'], 
+        //         vec!['х', 'л', 'г', 'э'], 
+        //     ]
+        // ]),
+        // ("эволюция 1".to_string(), [
+        //     vec![
+        //         vec!['у', 'ы', 'я', 'о', 'ь', '.'], 
+        //         vec!['ш', 'с', 'г'], 
+        //         vec!['б', 'т', 'п'], 
+        //         vec!['й', 'к', 'э', 'ч', 'в', 'х']
+        //     ], 
+        //     vec![
+        //         vec!['ф', 'ж', '.', 'м', 'ц', 'д'], 
+        //         vec!['з', 'е', 'ю'], 
+        //         vec!['ё', 'а', 'и'], 
+        //         vec!['н', 'л', 'щ', 'ъ', 'р', '.']
+        //     ]
+        // ]),
+        // ("эволюция 2".to_string(), [
+        //     vec![
+        //         vec!['в', 'м', 'я', 'ё', 'у', 'ь'], 
+        //         vec!['а', 'ы', 'о'], 
+        //         vec!['д', 'к', 'т'], 
+        //         vec!['ц', 'э', 'ш', 'б', 'с', 'ч']
+        //     ], 
+        //     vec![
+        //         vec!['ж', 'з', 'й', 'ф', 'т', 'п'], 
+        //         vec!['ю', 'г', 'и'], 
+        //         vec!['е', 'а', 'о'], 
+        //         vec!['щ', 'л', 'х', 'р', 'н', 'ъ']
+        //     ]
+        // ]),
+        ("i1991".to_string(), [ 
             vec![
-                vec!['ё', 'ы'], 
-                vec!['ь', 'э', 'ъ'], 
-                vec!['у', 'а'], 
-                vec!['и', 'о', 'ю', 'я'], 
-                vec!['е'], 
+                vec!['э', 'ц', 'щ', 'р', 'й'], 
+                vec!['ж', 'с', 'з'], 
+                vec!['м', 'т', 'л'], 
+                vec!['ч', 'в', 'к', 'д', 'п', 'ъ'], 
             ],
             vec![
-                vec!['ц', 'ш', 'й', 'д', 'х', 'ч'], 
-                vec!['з', 'с', 'ж'], 
-                vec!['щ', 'к', 'т', 'п'], 
-                vec!['в', 'н', 'м', 'б', 'л', 'г', 'ф'], 
-                vec!['р'], 
-            ]
-        ]),
-        ("диктор".to_string(), [
-            vec![
-                vec!['ц', 'у', 'ф', 'ё'], 
-                vec!['ь', 'и', 'э', 'ъ'], 
-                vec!['я', 'е', 'х'], 
-                vec!['о', 'ы', 'а', 'ю'], 
-            ],
-            vec![
-                vec!['з', 'л', 'б', 'в', 'н', 'м'], 
-                vec!['к', 'т', 'п'], 
-                vec!['д', 'с', 'г'], 
-                vec!['ч', 'р', 'ж', 'й', 'ш', 'щ'], 
-            ]
-        ]),
-        ("зубачёв".to_string(), [
-            vec![
-                vec!['ф', 'г', 'ш', 'ё'], 
-                vec!['ы', 'и', 'ь', 'ъ'], 
-                vec!['а', 'е', 'ю'], 
-                vec!['я', 'о', 'у', 'э'], 
-            ],
-            vec![
-                vec!['й', 'л', 'б', 'м', 'т', 'д'], 
-                vec!['р', 'с', 'в'], 
-                vec!['п', 'н', 'к'], 
-                vec!['х', 'з', 'ч', 'ц', 'ж', 'щ'], 
-            ]
-        ]),
-        ("bouncepaw".to_string(), [
-            vec![
-                vec!['ж', 'з', 'в', 'й'], 
-                vec!['п', 'с', 'ч'], 
-                vec!['р', 'т', 'м'], 
-                vec!['д', 'н', 'к', 'ф'], 
-            ],
-            vec![
-                vec!['ь', 'е', 'а', 'щ', 'ё', 'ъ', 'ц'], 
-                vec!['я', 'о', 'ы', 'ю', 'ш'], 
-                vec!['у', 'и', 'б'], 
-                vec!['х', 'л', 'г', 'э'], 
-            ]
-        ]),
-        ("эволюция 1".to_string(), [
-            vec![
-                vec!['у', 'ы', 'я', 'о', 'ь', '.'], 
-                vec!['ш', 'с', 'г'], 
-                vec!['б', 'т', 'п'], 
-                vec!['й', 'к', 'э', 'ч', 'в', 'х']
-            ], 
-            vec![
-                vec!['ф', 'ж', '.', 'м', 'ц', 'д'], 
-                vec!['з', 'е', 'ю'], 
-                vec!['ё', 'а', 'и'], 
-                vec!['н', 'л', 'щ', 'ъ', 'р', '.']
-            ]
-        ]),
-        ("эволюция 2".to_string(), [
-            vec![
-                vec!['в', 'м', 'я', 'ё', 'у', 'ь'], 
-                vec!['а', 'ы', 'о'], 
-                vec!['д', 'к', 'т'], 
-                vec!['ц', 'э', 'ш', 'б', 'с', 'ч']
-            ], 
-            vec![
-                vec!['ж', 'з', 'й', 'ф', 'т', 'п'], 
-                vec!['ю', 'г', 'и'], 
-                vec!['е', 'а', 'о'], 
-                vec!['щ', 'л', 'х', 'р', 'н', 'ъ']
+                vec!['ё', 'у', 'ь', 'ы', 'о', 'а'], 
+                vec!['я', 'е'], 
+                vec!['г', 'и', 'б'], 
+                vec!['х', 'н', 'ш', 'ф', 'ю'], 
             ]
         ]),
     ];
 
     let english_keyboards: Vec<(String, Keyboard)> = vec![
-        ("qwerty".to_string(), [
-            vec![
-                vec!['q', 'a', 'z'], 
-                vec!['w', 's', 'x'], 
-                vec!['e', 'd', 'c'], 
-                vec!['r', 'f', 'v', 'b', 'g', 't'], 
-            ],
-            vec![
-                vec!['y', 'h', 'n', 'u', 'j', 'm'], 
-                vec!['i', 'k'], 
-                vec!['o', 'l'], 
-                vec!['p'], 
-            ]
-        ]),
-        ("dvorak".to_string(), [
-            vec![
-                vec!['a'], 
-                vec!['o', 'q'], 
-                vec!['e', 'j'], 
-                vec!['p', 'u', 'k', 'y', 'i', 'x'], 
-            ],
-            vec![
-                vec!['f', 'd', 'b', 'g', 'h', 'm'], 
-                vec!['c', 't', 'w'], 
-                vec!['r', 'n', 'v'], 
-                vec!['l', 's', 'z'], 
-            ]
-        ]),
-        ("capewell_0.9.3".to_string(), [
-            vec![
-                vec!['a', 'x'], 
-                vec!['y', 'e', 'z'], 
-                vec!['m', 'r', 'c'], 
-                vec!['d', 's', 'v', 'f', 'g'], 
-            ],
-            vec![
-                vec!['j', 'b', 'k', 'p', 't', 'w'], 
-                vec!['l', 'n', 'h'], 
-                vec!['u', 'i'], 
-                vec!['q', 'o'], 
-            ]
-        ]),
-        ("double_dvorak".to_string(), [
-            vec![
-                vec!['s', 'p', 't'], 
-                vec!['d', 'h', 'n'], 
-                vec!['k', 'o', 'q'], 
-                vec!['f', 'u', 'j', 'i', 'e', 'x'], 
-            ],
-            vec![
-                vec!['y', 'o', 'b', 'g', 'a', 'v'], 
-                vec!['c', 'e', 'w'], 
-                vec!['r', 'h', 'm'], 
-                vec!['l', 't', 'z'], 
-            ]
-        ]),
-        ("workman".to_string(), [
-            vec![
-                vec!['q', 'a', 'z'], 
-                vec!['d', 's', 'x'], 
-                vec!['r', 'h', 'm'], 
-                vec!['w', 't', 'c', 'b', 'g', 'v'], 
-            ],
-            vec![
-                vec!['j', 'y', 'k', 'f', 'n', 'l'], 
-                vec!['u', 'e'], 
-                vec!['p', 'o'], 
-                vec!['i'], 
-            ]
-        ]),
-        ("colemak".to_string(), [
-            vec![
-                vec!['q', 'a', 'z'], 
-                vec!['w', 'r', 'x'], 
-                vec!['f', 's', 'c'], 
-                vec!['p', 't', 'v', 'g', 'd', 'b'], 
-            ],
-            vec![
-                vec!['j', 'h', 'k', 'l', 'n', 'm'], 
-                vec!['u', 'e'], 
-                vec!['y', 'i'], 
-                vec!['o'], 
-            ]
-        ]),
-        ("evolutionary 1".to_string(), [
-            vec![
-                vec!['b', 'r', 'x'], 
-                vec!['l', 'm', 'k'], 
-                vec!['e', 'u', 'z'], 
-                vec!['d', 'y', 'v', 'p', 'g', 'q']
-            ], 
-            vec![
-                vec!['f', 'h', 'c', 'n', 'j', 's'], 
-                vec!['a', 'o'], 
-                vec!['t', 'w'], 
-                vec!['i']
-            ]
-        ]),
-        ("evolutionary 2".to_string(), [
-            vec![
-                vec!['a', 'o', '.'], 
-                vec!['n', 'h', 'u'], 
-                vec!['w', 'c', 'p'], 
-                vec!['q', 'f', '.', 'j', 'g', 't']
-            ], 
-            vec![
-                vec!['l', 'x', 'm', 'r', 'z', 'v'], 
-                vec!['i', 'k', 'y'], 
-                vec!['.', 'e', '.'], 
-                vec!['b', 's', 'd']
-            ]
-        ]),
-        ("evolutionary 3".to_string(), [
-            vec![
-                vec!['z', 'a', 'u'], 
-                vec!['n', 'm', 'l'], 
-                vec!['e', 'q', 'o'], 
-                vec!['y', 'd', 'j', 'g', 't', 'p']
-            ], 
-            vec![
-                vec!['w', 'h', 'b', 'c', 'v', 'f'], 
-                vec!['a', 'k', 't'], 
-                vec!['o', 'e', 'i'], 
-                vec!['x', 'r', 's']
-            ]
-        ]),
+        // ("qwerty".to_string(), [
+        //     vec![
+        //         vec!['q', 'a', 'z'], 
+        //         vec!['w', 's', 'x'], 
+        //         vec!['e', 'd', 'c'], 
+        //         vec!['r', 'f', 'v', 'b', 'g', 't'], 
+        //     ],
+        //     vec![
+        //         vec!['y', 'h', 'n', 'u', 'j', 'm'], 
+        //         vec!['i', 'k'], 
+        //         vec!['o', 'l'], 
+        //         vec!['p'], 
+        //     ]
+        // ]),
+        // ("dvorak".to_string(), [
+        //     vec![
+        //         vec!['a'], 
+        //         vec!['o', 'q'], 
+        //         vec!['e', 'j'], 
+        //         vec!['p', 'u', 'k', 'y', 'i', 'x'], 
+        //     ],
+        //     vec![
+        //         vec!['f', 'd', 'b', 'g', 'h', 'm'], 
+        //         vec!['c', 't', 'w'], 
+        //         vec!['r', 'n', 'v'], 
+        //         vec!['l', 's', 'z'], 
+        //     ]
+        // ]),
+        // ("capewell_0.9.3".to_string(), [
+        //     vec![
+        //         vec!['a', 'x'], 
+        //         vec!['y', 'e', 'z'], 
+        //         vec!['m', 'r', 'c'], 
+        //         vec!['d', 's', 'v', 'f', 'g'], 
+        //     ],
+        //     vec![
+        //         vec!['j', 'b', 'k', 'p', 't', 'w'], 
+        //         vec!['l', 'n', 'h'], 
+        //         vec!['u', 'i'], 
+        //         vec!['q', 'o'], 
+        //     ]
+        // ]),
+        // ("double_dvorak".to_string(), [
+        //     vec![
+        //         vec!['s', 'p', 't'], 
+        //         vec!['d', 'h', 'n'], 
+        //         vec!['k', 'o', 'q'], 
+        //         vec!['f', 'u', 'j', 'i', 'e', 'x'], 
+        //     ],
+        //     vec![
+        //         vec!['y', 'o', 'b', 'g', 'a', 'v'], 
+        //         vec!['c', 'e', 'w'], 
+        //         vec!['r', 'h', 'm'], 
+        //         vec!['l', 't', 'z'], 
+        //     ]
+        // ]),
+        // ("workman".to_string(), [
+        //     vec![
+        //         vec!['q', 'a', 'z'], 
+        //         vec!['d', 's', 'x'], 
+        //         vec!['r', 'h', 'm'], 
+        //         vec!['w', 't', 'c', 'b', 'g', 'v'], 
+        //     ],
+        //     vec![
+        //         vec!['j', 'y', 'k', 'f', 'n', 'l'], 
+        //         vec!['u', 'e'], 
+        //         vec!['p', 'o'], 
+        //         vec!['i'], 
+        //     ]
+        // ]),
+        // ("colemak".to_string(), [
+        //     vec![
+        //         vec!['q', 'a', 'z'], 
+        //         vec!['w', 'r', 'x'], 
+        //         vec!['f', 's', 'c'], 
+        //         vec!['p', 't', 'v', 'g', 'd', 'b'], 
+        //     ],
+        //     vec![
+        //         vec!['j', 'h', 'k', 'l', 'n', 'm'], 
+        //         vec!['u', 'e'], 
+        //         vec!['y', 'i'], 
+        //         vec!['o'], 
+        //     ]
+        // ]),
+        // ("evolutionary 1".to_string(), [
+        //     vec![
+        //         vec!['b', 'r', 'x'], 
+        //         vec!['l', 'm', 'k'], 
+        //         vec!['e', 'u', 'z'], 
+        //         vec!['d', 'y', 'v', 'p', 'g', 'q']
+        //     ], 
+        //     vec![
+        //         vec!['f', 'h', 'c', 'n', 'j', 's'], 
+        //         vec!['a', 'o'], 
+        //         vec!['t', 'w'], 
+        //         vec!['i']
+        //     ]
+        // ]),
+        // ("evolutionary 2".to_string(), [
+        //     vec![
+        //         vec!['a', 'o', '.'], 
+        //         vec!['n', 'h', 'u'], 
+        //         vec!['w', 'c', 'p'], 
+        //         vec!['q', 'f', '.', 'j', 'g', 't']
+        //     ], 
+        //     vec![
+        //         vec!['l', 'x', 'm', 'r', 'z', 'v'], 
+        //         vec!['i', 'k', 'y'], 
+        //         vec!['.', 'e', '.'], 
+        //         vec!['b', 's', 'd']
+        //     ]
+        // ]),
+        // ("evolutionary 3".to_string(), [
+        //     vec![
+        //         vec!['z', 'a', 'u'], 
+        //         vec!['n', 'm', 'l'], 
+        //         vec!['e', 'q', 'o'], 
+        //         vec!['y', 'd', 'j', 'g', 't', 'p']
+        //     ], 
+        //     vec![
+        //         vec!['w', 'h', 'b', 'c', 'v', 'f'], 
+        //         vec!['a', 'k', 't'], 
+        //         vec!['o', 'e', 'i'], 
+        //         vec!['x', 'r', 's']
+        //     ]
+        // ]),
     ];
 
     let russian_stats = read_books_statistics("words/russian.txt");
-    for i in 1..5 {
-        count_combinations(&russian_stats, i, &"russian".to_string());
-    }
+    // for i in 1..5 {
+    //     count_combinations(&russian_stats, i, &"russian".to_string());
+    // }
 
     for (name, keyboard) in russian_keyboards {
         println!("Layout: {}", name);
